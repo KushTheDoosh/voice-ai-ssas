@@ -63,6 +63,7 @@ class VoiceAssistantCreate(BaseModel):
     voice: ElevenLabsVoice = Field(..., description="ElevenLabs voice to use")
     end_call_message: str = Field(..., min_length=1, max_length=500, description="Message before ending call")
     max_call_duration_seconds: int = Field(..., ge=30, le=3600, description="Maximum call duration in seconds")
+    phone_number_id: Optional[str] = Field(None, description="ID of phone number for inbound calls")
 
 
 class VoiceAssistantUpdate(BaseModel):
@@ -76,6 +77,7 @@ class VoiceAssistantUpdate(BaseModel):
     voice: Optional[ElevenLabsVoice] = None
     end_call_message: Optional[str] = Field(None, min_length=1, max_length=500)
     max_call_duration_seconds: Optional[int] = Field(None, ge=30, le=3600)
+    phone_number_id: Optional[str] = Field(None, description="ID of phone number for inbound calls")
 
 
 class VoiceAssistantResponse(BaseModel):
@@ -86,11 +88,12 @@ class VoiceAssistantResponse(BaseModel):
     name: str
     first_message: str
     system_prompt: str
-    model_provider: ModelProvider
-    model_name: ModelName
-    voice: ElevenLabsVoice
+    model_provider: str
+    model_name: str
+    voice: str
     end_call_message: str
     max_call_duration_seconds: int
+    phone_number_id: Optional[str] = None
     created_at: str
     updated_at: str
     

@@ -1,26 +1,46 @@
 "use client";
 
-import { useCallback } from "react";
-import { useDropzone } from "react-dropzone";
-import { cn } from "@/utils";
-import { KnowledgeBaseConfig } from "./KnowledgeBaseConfig";
+import { useCallback, useMemo } from "react";
+import { useDropzone, Accept } from "react-dropzone";
+import { cn, formatFileSize } from "@/utils";
+import { FileTypeConfig } from "../../store/configStore";
 
 interface FileDropzoneProps {
   onFilesAdded: (files: File[]) => void;
   disabled?: boolean;
   currentFileCount: number;
+  maxFiles: number;
+  maxFileSize: number;
+  acceptedFileTypes: FileTypeConfig[];
 }
 
 export default function FileDropzone({ 
   onFilesAdded, 
   disabled, 
-  currentFileCount 
+  currentFileCount,
+  maxFiles,
+  maxFileSize,
+  acceptedFileTypes,
 }: FileDropzoneProps) {
-  const remainingSlots = KnowledgeBaseConfig.maxFiles - currentFileCount;
+  const remainingSlots = maxFiles - currentFileCount;
+  
+  // Convert file types config to react-dropzone Accept format
+  const accept: Accept = useMemo(() => {
+    const acceptMap: Accept = {};
+    acceptedFileTypes.forEach((fileType) => {
+      fileType.mimeTypes.forEach((mimeType) => {
+        if (!acceptMap[mimeType]) {
+          acceptMap[mimeType] = [];
+        }
+        acceptMap[mimeType].push(fileType.extension);
+      });
+    });
+    return acceptMap;
+  }, [acceptedFileTypes]);
   
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const validFiles = acceptedFiles.filter(file => {
-      if (file.size > KnowledgeBaseConfig.maxFileSize) {
+      if (file.size > maxFileSize) {
         console.warn(`File ${file.name} exceeds maximum size`);
         return false;
       }
@@ -30,12 +50,12 @@ export default function FileDropzone({
     if (validFiles.length > 0) {
       onFilesAdded(validFiles);
     }
-  }, [onFilesAdded, remainingSlots]);
+  }, [onFilesAdded, remainingSlots, maxFileSize]);
 
   const { getRootProps, getInputProps, isDragActive, isDragReject } = useDropzone({
     onDrop,
-    accept: KnowledgeBaseConfig.acceptedFileTypes,
-    maxSize: KnowledgeBaseConfig.maxFileSize,
+    accept,
+    maxSize: maxFileSize,
     maxFiles: remainingSlots,
     disabled: disabled || remainingSlots <= 0,
   });
@@ -93,19 +113,19 @@ export default function FileDropzone({
         
         {/* File types */}
         <div className="mt-4 flex flex-wrap justify-center gap-2">
-          {Object.entries(KnowledgeBaseConfig.fileTypeLabels).map(([ext, { label }]) => (
+          {acceptedFileTypes.map((fileType) => (
             <span 
-              key={ext}
+              key={fileType.extension}
               className="px-3 py-1 text-xs font-medium text-stone-500 bg-stone-100 rounded-full"
             >
-              {ext.toUpperCase().slice(1)}
+              {fileType.extension.toUpperCase().slice(1)}
             </span>
           ))}
         </div>
         
         {/* Limits info */}
         <p className="text-xs text-stone-400 mt-4">
-          Max {KnowledgeBaseConfig.formatFileSize(KnowledgeBaseConfig.maxFileSize)} per file • 
+          Max {formatFileSize(maxFileSize)} per file • 
           {remainingSlots > 0 
             ? ` ${remainingSlots} file${remainingSlots !== 1 ? 's' : ''} remaining`
             : ' Maximum files reached'
@@ -115,4 +135,3 @@ export default function FileDropzone({
     </div>
   );
 }
-

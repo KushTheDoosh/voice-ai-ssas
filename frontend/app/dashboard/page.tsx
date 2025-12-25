@@ -1,37 +1,50 @@
 "use client";
 
-import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import OnboardingStepper from "./components/OnboardingStepper";
+import Home from "./components/Home";
+import { useOnboardingStore } from "./store/onboardingStore";
 
-export default function DashboardPage() {
-  return (
-    <div className="min-h-screen py-8">
-      {/* Navigation back */}
-      <div className="mb-8">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-2 text-stone-600 hover:text-stone-900 transition-colors group"
-        >
-          <svg
-            className="w-5 h-5 group-hover:-translate-x-1 transition-transform"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M10 19l-7-7m0 0l7-7m-7 7h18"
-            />
-          </svg>
-          <span>Back to Home</span>
-        </Link>
-      </div>
+/**
+ * Dashboard page content component.
+ * Conditionally renders Home view or Onboarding flow based on URL params and state.
+ */
+function DashboardContent() {
+  const searchParams = useSearchParams();
+  const { businessId, currentStep } = useOnboardingStore();
+  
+  // Show onboarding if:
+  // 1. URL has ?onboarding=true query param
+  // 2. There's an active onboarding session (currentStep > 1 but not completed)
+  const isOnboarding = searchParams.get("onboarding") === "true";
+  const hasActiveOnboarding = currentStep > 1 && !businessId;
+  
+  const showOnboarding = isOnboarding || hasActiveOnboarding;
 
-      {/* Onboarding stepper */}
-      <OnboardingStepper />
-    </div>
-  );
+  if (showOnboarding) {
+    return <OnboardingStepper />;
+  }
+
+  return <Home />;
 }
 
+/**
+ * Dashboard page with Suspense boundary for useSearchParams.
+ */
+export default function DashboardPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="animate-pulse flex flex-col items-center gap-4">
+            <div className="w-12 h-12 bg-stone-200 rounded-xl" />
+            <div className="w-32 h-4 bg-stone-200 rounded" />
+          </div>
+        </div>
+      }
+    >
+      <DashboardContent />
+    </Suspense>
+  );
+}

@@ -1,6 +1,7 @@
 """Voice assistant related API routes."""
 
 from fastapi import APIRouter, HTTPException, status
+from typing import List
 from ..models.voice_assistant import (
     VoiceAssistantCreate,
     VoiceAssistantUpdate,
@@ -74,13 +75,14 @@ async def create_voice_assistant(business_id: str, assistant: VoiceAssistantCrea
             detail=f"Business with ID {business_id} not found"
         )
     
-    # Check if business already has a voice assistant
-    existing = db.get_voice_assistant(business_id)
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Business already has a voice assistant. Use PATCH to update."
-        )
+    # Validate phone number if provided
+    if assistant.phone_number_id:
+        phone = db.get_phone_number_by_id(business_id, assistant.phone_number_id)
+        if not phone:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Phone number with ID {assistant.phone_number_id} not found"
+            )
     
     assistant_data = assistant.model_dump()
     # Convert enums to string values for storage
@@ -92,9 +94,9 @@ async def create_voice_assistant(business_id: str, assistant: VoiceAssistantCrea
     return VoiceAssistantResponse(**created)
 
 
-@router.get("/{business_id}", response_model=VoiceAssistantResponse)
-async def get_voice_assistant(business_id: str):
-    """Get the voice assistant for a business."""
+@router.get("/{business_id}", response_model=List[VoiceAssistantResponse])
+async def get_voice_assistants(business_id: str):
+    """Get all voice assistants for a business."""
     # Validate business exists
     business = db.get_business(business_id)
     if not business:
@@ -103,18 +105,33 @@ async def get_voice_assistant(business_id: str):
             detail=f"Business with ID {business_id} not found"
         )
     
-    assistant = db.get_voice_assistant(business_id)
+    assistants = db.get_voice_assistants(business_id)
+    return [VoiceAssistantResponse(**a) for a in assistants]
+
+
+@router.get("/{business_id}/{assistant_id}", response_model=VoiceAssistantResponse)
+async def get_voice_assistant(business_id: str, assistant_id: str):
+    """Get a specific voice assistant."""
+    # Validate business exists
+    business = db.get_business(business_id)
+    if not business:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Business with ID {business_id} not found"
+        )
+    
+    assistant = db.get_voice_assistant_by_id(business_id, assistant_id)
     if not assistant:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No voice assistant found for business {business_id}"
+            detail=f"Voice assistant with ID {assistant_id} not found"
         )
     
     return VoiceAssistantResponse(**assistant)
 
 
-@router.patch("/{business_id}", response_model=VoiceAssistantResponse)
-async def update_voice_assistant(business_id: str, update: VoiceAssistantUpdate):
+@router.patch("/{business_id}/{assistant_id}", response_model=VoiceAssistantResponse)
+async def update_voice_assistant(business_id: str, assistant_id: str, update: VoiceAssistantUpdate):
     """Update a voice assistant."""
     # Validate business exists
     business = db.get_business(business_id)
@@ -124,12 +141,21 @@ async def update_voice_assistant(business_id: str, update: VoiceAssistantUpdate)
             detail=f"Business with ID {business_id} not found"
         )
     
-    existing = db.get_voice_assistant(business_id)
+    existing = db.get_voice_assistant_by_id(business_id, assistant_id)
     if not existing:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No voice assistant found for business {business_id}"
+            detail=f"Voice assistant with ID {assistant_id} not found"
         )
+    
+    # Validate phone number if provided
+    if update.phone_number_id:
+        phone = db.get_phone_number_by_id(business_id, update.phone_number_id)
+        if not phone:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Phone number with ID {update.phone_number_id} not found"
+            )
     
     update_data = update.model_dump(exclude_unset=True)
     
@@ -141,6 +167,27 @@ async def update_voice_assistant(business_id: str, update: VoiceAssistantUpdate)
     if "voice" in update_data and update_data["voice"]:
         update_data["voice"] = update_data["voice"].value
     
-    updated = db.update_voice_assistant(business_id, update_data)
+    updated = db.update_voice_assistant(business_id, assistant_id, update_data)
     return VoiceAssistantResponse(**updated)
 
+
+@router.delete("/{business_id}/{assistant_id}")
+async def delete_voice_assistant(business_id: str, assistant_id: str):
+    """Delete a voice assistant."""
+    # Validate business exists
+    business = db.get_business(business_id)
+    if not business:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Business with ID {business_id} not found"
+        )
+    
+    existing = db.get_voice_assistant_by_id(business_id, assistant_id)
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Voice assistant with ID {assistant_id} not found"
+        )
+    
+    db.delete_voice_assistant(business_id, assistant_id)
+    return {"message": "Voice assistant deleted successfully", "deleted_id": assistant_id}

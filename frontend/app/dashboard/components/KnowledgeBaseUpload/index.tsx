@@ -1,12 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useOnboardingStore, KnowledgeBaseFile } from "../../store/onboardingStore";
-import { KnowledgeBaseConfig } from "./KnowledgeBaseConfig";
+import { KnowledgeBaseConfig } from "../../store/configStore";
 import FileDropzone from "./FileDropzone";
-import { cn } from "@/utils";
+import { cn, API_ENDPOINTS, apiFetch, formatFileSize, getFileExtension } from "@/utils";
 
-export default function KnowledgeBaseUpload() {
+interface Props {
+  config: KnowledgeBaseConfig;
+}
+
+export default function KnowledgeBaseUpload({ config }: Props) {
   const { 
     businessId, 
     knowledgeBaseFiles, 
@@ -21,10 +25,16 @@ export default function KnowledgeBaseUpload() {
   
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
 
+  // Get file type labels from config
+  const getFileTypeLabel = useCallback((ext: string) => {
+    const fileType = config.acceptedFileTypes.find((t) => t.extension === ext);
+    return fileType ? { label: fileType.label, icon: fileType.icon } : { label: "File", icon: "📄" };
+  }, [config.acceptedFileTypes]);
+
   const handleFilesAdded = async (files: File[]) => {
     for (const file of files) {
       const fileId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const ext = KnowledgeBaseConfig.getFileExtension(file.name);
+      const ext = getFileExtension(file.name);
       
       // Add file to store immediately for UI feedback
       const fileRecord: KnowledgeBaseFile = {
@@ -82,17 +92,10 @@ export default function KnowledgeBaseUpload() {
         }
       });
       
-      const response = await fetch(
-        `${KnowledgeBaseConfig.api.endpoint}/${businessId}`,
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
-      
-      if (!response.ok) {
-        throw new Error("Failed to upload files");
-      }
+      await apiFetch(API_ENDPOINTS.knowledgeBase.upload(businessId), {
+        method: "POST",
+        body: formData,
+      });
       
       nextStep();
     } catch (err) {
@@ -106,10 +109,10 @@ export default function KnowledgeBaseUpload() {
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-stone-900">
-          {KnowledgeBaseConfig.title}
+          {config.title}
         </h2>
         <p className="text-stone-600 mt-1">
-          {KnowledgeBaseConfig.subtitle}
+          {config.subtitle}
         </p>
       </div>
 
@@ -118,19 +121,21 @@ export default function KnowledgeBaseUpload() {
         onFilesAdded={handleFilesAdded}
         disabled={isLoading}
         currentFileCount={knowledgeBaseFiles.length}
+        maxFiles={config.maxFiles}
+        maxFileSize={config.maxFileSize}
+        acceptedFileTypes={config.acceptedFileTypes}
       />
 
       {/* File list */}
       {knowledgeBaseFiles.length > 0 && (
         <div className="space-y-3">
           <h3 className="text-sm font-medium text-stone-700">
-            Uploaded Files ({knowledgeBaseFiles.length}/{KnowledgeBaseConfig.maxFiles})
+            Uploaded Files ({knowledgeBaseFiles.length}/{config.maxFiles})
           </h3>
           
           <div className="space-y-2">
             {knowledgeBaseFiles.map((file) => {
-              const fileType = KnowledgeBaseConfig.fileTypeLabels[file.type] || 
-                { label: "File", icon: "📄" };
+              const fileType = getFileTypeLabel(file.type);
               const progress = uploadProgress[file.id] || 100;
               
               return (
@@ -158,7 +163,7 @@ export default function KnowledgeBaseUpload() {
                         {file.name}
                       </p>
                       <p className="text-xs text-stone-500">
-                        {fileType.label} • {KnowledgeBaseConfig.formatFileSize(file.size)}
+                        {fileType.label} • {formatFileSize(file.size)}
                       </p>
                     </div>
                     
@@ -237,4 +242,3 @@ export default function KnowledgeBaseUpload() {
     </div>
   );
 }
-

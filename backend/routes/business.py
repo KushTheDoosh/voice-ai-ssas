@@ -1,10 +1,18 @@
 """Business-related API routes."""
 
 from fastapi import APIRouter, HTTPException, status
+from typing import List
 from ..models.business import BusinessCreate, BusinessUpdate, BusinessResponse
 from ..database import db
 
 router = APIRouter(prefix="/business", tags=["Business"])
+
+
+@router.get("", response_model=List[BusinessResponse])
+async def list_businesses():
+    """Get all businesses."""
+    businesses = db.get_all_businesses()
+    return [BusinessResponse(**b) for b in businesses]
 
 
 @router.post("", response_model=BusinessResponse, status_code=status.HTTP_201_CREATED)
@@ -44,7 +52,7 @@ async def update_business(business_id: str, business_update: BusinessUpdate):
 
 @router.delete("/{business_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_business(business_id: str):
-    """Delete a business profile."""
+    """Delete a business profile and all associated data."""
     existing = db.get_business(business_id)
     if not existing:
         raise HTTPException(
@@ -52,7 +60,7 @@ async def delete_business(business_id: str):
             detail=f"Business with ID {business_id} not found"
         )
     
-    # Remove business from database
-    del db.businesses[business_id]
+    # Delete all associated data (cascade delete)
+    db.delete_business(business_id)
     return None
 

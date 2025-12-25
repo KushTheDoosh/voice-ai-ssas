@@ -2,11 +2,17 @@
 
 import { useState } from "react";
 import { useOnboardingStore, BusinessData } from "../../store/onboardingStore";
-import { BusinessRegistrationConfig } from "./BusinessRegistrationConfig";
-import { cn } from "@/utils";
+import { useBusinessStore, mapBusinessResponse } from "../../store/businessStore";
+import { BusinessConfig } from "../../store/configStore";
+import { cn, API_ENDPOINTS, apiFetch } from "@/utils";
 
-export default function BusinessRegistration() {
+interface Props {
+  config: BusinessConfig;
+}
+
+export default function BusinessRegistration({ config }: Props) {
   const { businessData, setBusinessData, setBusinessId, nextStep, isLoading, setLoading, setError } = useOnboardingStore();
+  const { addBusiness } = useBusinessStore();
   
   const [formData, setFormData] = useState<BusinessData>({
     name: businessData?.name || "",
@@ -16,15 +22,19 @@ export default function BusinessRegistration() {
   const [errors, setErrors] = useState<Partial<Record<keyof BusinessData, string>>>({});
   const [touched, setTouched] = useState<Partial<Record<keyof BusinessData, boolean>>>({});
 
+  // Get field config from API config
+  const nameField = config.fields.find((f) => f.name === "name");
+  const descriptionField = config.fields.find((f) => f.name === "description");
+
   const validateField = (name: keyof BusinessData, value: string): string | null => {
-    if (name === "name") {
-      const field = BusinessRegistrationConfig.fields.name;
-      if (field.required && !value.trim()) {
-        return `${field.label} is required`;
-      }
-      if (value.length > field.maxLength) {
-        return `${field.label} must be less than ${field.maxLength} characters`;
-      }
+    const field = config.fields.find((f) => f.name === name);
+    if (!field) return null;
+    
+    if (field.required && !value.trim()) {
+      return `${field.label} is required`;
+    }
+    if (field.maxLength && value.length > field.maxLength) {
+      return `${field.label} must be less than ${field.maxLength} characters`;
     }
     return null;
   };
@@ -33,11 +43,14 @@ export default function BusinessRegistration() {
     const newErrors: Partial<Record<keyof BusinessData, string>> = {};
     let isValid = true;
     
-    const nameError = validateField("name", formData.name || "");
-    if (nameError) {
-      newErrors.name = nameError;
-      isValid = false;
-    }
+    config.fields.forEach((field) => {
+      const fieldName = field.name as keyof BusinessData;
+      const error = validateField(fieldName, formData[fieldName] || "");
+      if (error) {
+        newErrors[fieldName] = error;
+        isValid = false;
+      }
+    });
     
     setErrors(newErrors);
     return isValid;
@@ -69,23 +82,20 @@ export default function BusinessRegistration() {
     setError(null);
     
     try {
-      const response = await fetch(BusinessRegistrationConfig.api.endpoint, {
+      const response = await apiFetch<any>(API_ENDPOINTS.business.base, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: formData.name,
           description: formData.description || null,
         }),
       });
       
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || "Failed to create business");
-      }
-      
-      const data = await response.json();
+      // Add to business store for dashboard display
+      const business = mapBusinessResponse(response);
+      addBusiness(business);
+      // Update onboarding store
       setBusinessData(formData);
-      setBusinessId(data.id);
+      setBusinessId(response.id);
       nextStep();
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
@@ -94,66 +104,73 @@ export default function BusinessRegistration() {
     }
   };
 
-  const { fields } = BusinessRegistrationConfig;
-
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-stone-900">
-          {BusinessRegistrationConfig.title}
+          {config.title}
         </h2>
         <p className="text-stone-600 mt-1">
-          {BusinessRegistrationConfig.subtitle}
+          {config.subtitle}
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Business Name */}
-        <div>
-          <label className="block text-sm font-medium text-stone-700 mb-2">
-            {fields.name.label}
-            {fields.name.required && <span className="text-red-500 ml-1">*</span>}
-          </label>
-          <input
-            type="text"
-            value={formData.name}
-            onChange={(e) => handleChange("name", e.target.value)}
-            onBlur={() => handleBlur("name")}
-            placeholder={fields.name.placeholder}
-            className={cn(
-              "w-full px-4 py-3 rounded-xl border bg-white transition-all duration-200",
-              "focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500",
-              errors.name 
-                ? "border-red-300 bg-red-50/50" 
-                : "border-stone-200 hover:border-stone-300"
+        {nameField && (
+          <div>
+            <label className="block text-sm font-medium text-stone-700 mb-2">
+              {nameField.label}
+              {nameField.required && <span className="text-red-500 ml-1">*</span>}
+            </label>
+            <input
+              type="text"
+              value={formData.name}
+              onChange={(e) => handleChange("name", e.target.value)}
+              onBlur={() => handleBlur("name")}
+              placeholder={nameField.placeholder}
+              className={cn(
+                "w-full px-4 py-3 rounded-xl border bg-white transition-all duration-200",
+                "focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500",
+                errors.name 
+                  ? "border-red-300 bg-red-50/50" 
+                  : "border-stone-200 hover:border-stone-300"
+              )}
+            />
+            {errors.name && (
+              <p className="text-red-500 text-sm mt-1.5">{errors.name}</p>
             )}
-          />
-          {errors.name && (
-            <p className="text-red-500 text-sm mt-1.5">{errors.name}</p>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Description */}
-        <div>
-          <label className="block text-sm font-medium text-stone-700 mb-2">
-            {fields.description.label}
-          </label>
-          <textarea
-            value={formData.description}
-            onChange={(e) => handleChange("description", e.target.value)}
-            onBlur={() => handleBlur("description")}
-            placeholder={fields.description.placeholder}
-            rows={4}
-            className={cn(
-              "w-full px-4 py-3 rounded-xl border bg-white transition-all duration-200 resize-none",
-              "focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500",
-              "border-stone-200 hover:border-stone-300"
+        {descriptionField && (
+          <div>
+            <label className="block text-sm font-medium text-stone-700 mb-2">
+              {descriptionField.label}
+              {descriptionField.required && <span className="text-red-500 ml-1">*</span>}
+            </label>
+            <textarea
+              value={formData.description}
+              onChange={(e) => handleChange("description", e.target.value)}
+              onBlur={() => handleBlur("description")}
+              placeholder={descriptionField.placeholder}
+              rows={4}
+              className={cn(
+                "w-full px-4 py-3 rounded-xl border bg-white transition-all duration-200 resize-none",
+                "focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500",
+                errors.description
+                  ? "border-red-300 bg-red-50/50"
+                  : "border-stone-200 hover:border-stone-300"
+              )}
+            />
+            {descriptionField.maxLength && (
+              <p className="text-stone-400 text-xs mt-1">
+                {formData.description?.length || 0} / {descriptionField.maxLength} characters
+              </p>
             )}
-          />
-          <p className="text-stone-400 text-xs mt-1">
-            {formData.description?.length || 0} / {fields.description.maxLength} characters
-          </p>
-        </div>
+          </div>
+        )}
 
         {/* Submit Button */}
         <div className="pt-4">

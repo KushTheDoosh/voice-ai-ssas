@@ -3,11 +3,15 @@
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useOnboardingStore, VoiceAssistantData } from "../../store/onboardingStore";
-import { VoiceAssistantConfigData } from "./VoiceAssistantConfigData";
+import { VoiceAssistantConfig as VoiceAssistantConfigType } from "../../store/configStore";
 import VoicePreview from "./VoicePreview";
-import { cn } from "@/utils";
+import { cn, API_ENDPOINTS, apiFetch } from "@/utils";
 
-export default function VoiceAssistantConfig() {
+interface Props {
+  config: VoiceAssistantConfigType;
+}
+
+export default function VoiceAssistantConfig({ config }: Props) {
   const router = useRouter();
   const { 
     businessId, 
@@ -23,21 +27,21 @@ export default function VoiceAssistantConfig() {
   
   const [formData, setFormData] = useState<VoiceAssistantData>({
     name: voiceAssistantData?.name || "",
-    firstMessage: voiceAssistantData?.firstMessage || VoiceAssistantConfigData.defaultFirstMessage,
+    firstMessage: voiceAssistantData?.firstMessage || config.defaults.firstMessage,
     systemPrompt: voiceAssistantData?.systemPrompt || 
-      VoiceAssistantConfigData.defaultSystemPrompt.replace("{business_name}", businessData?.name || "your company"),
-    modelProvider: voiceAssistantData?.modelProvider || "openai",
-    modelName: voiceAssistantData?.modelName || "gpt-4o",
-    voice: voiceAssistantData?.voice || "rachel",
-    endCallMessage: voiceAssistantData?.endCallMessage || VoiceAssistantConfigData.defaultEndCallMessage,
-    maxCallDurationSeconds: voiceAssistantData?.maxCallDurationSeconds || 300,
+      config.defaults.systemPrompt.replace("{business_name}", businessData?.name || "your company"),
+    modelProvider: voiceAssistantData?.modelProvider || config.providers[0]?.id || "openai",
+    modelName: voiceAssistantData?.modelName || config.providers[0]?.models[0]?.id || "gpt-4o",
+    voice: voiceAssistantData?.voice || config.voices[0]?.id || "rachel",
+    endCallMessage: voiceAssistantData?.endCallMessage || config.defaults.endCallMessage,
+    maxCallDurationSeconds: voiceAssistantData?.maxCallDurationSeconds || config.defaults.maxCallDurationSeconds,
   });
   
   const [errors, setErrors] = useState<Partial<Record<keyof VoiceAssistantData, string>>>({});
 
   const currentProvider = useMemo(() => 
-    VoiceAssistantConfigData.modelProviders.find(p => p.id === formData.modelProvider),
-    [formData.modelProvider]
+    config.providers.find(p => p.id === formData.modelProvider),
+    [formData.modelProvider, config.providers]
   );
 
   const handleChange = (name: keyof VoiceAssistantData, value: string | number) => {
@@ -46,7 +50,7 @@ export default function VoiceAssistantConfig() {
       
       // Reset model when provider changes
       if (name === "modelProvider") {
-        const provider = VoiceAssistantConfigData.modelProviders.find(p => p.id === value);
+        const provider = config.providers.find(p => p.id === value);
         if (provider && provider.models.length > 0) {
           newData.modelName = provider.models[0].id;
         }
@@ -94,43 +98,28 @@ export default function VoiceAssistantConfig() {
     
     try {
       // Create voice assistant
-      const assistantResponse = await fetch(
-        `${VoiceAssistantConfigData.api.endpoint}/${businessId}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: formData.name,
-            first_message: formData.firstMessage,
-            system_prompt: formData.systemPrompt,
-            model_provider: formData.modelProvider,
-            model_name: formData.modelName,
-            voice: formData.voice,
-            end_call_message: formData.endCallMessage,
-            max_call_duration_seconds: formData.maxCallDurationSeconds,
-          }),
-        }
-      );
-      
-      if (!assistantResponse.ok) {
-        throw new Error("Failed to create voice assistant");
-      }
+      await apiFetch(API_ENDPOINTS.voiceAssistant.create(businessId), {
+        method: "POST",
+        body: JSON.stringify({
+          name: formData.name,
+          first_message: formData.firstMessage,
+          system_prompt: formData.systemPrompt,
+          model_provider: formData.modelProvider,
+          model_name: formData.modelName,
+          voice: formData.voice,
+          end_call_message: formData.endCallMessage,
+          max_call_duration_seconds: formData.maxCallDurationSeconds,
+        }),
+      });
       
       // Complete onboarding
-      const completeResponse = await fetch(
-        VoiceAssistantConfigData.api.completeEndpoint,
+      const completeData = await apiFetch<{ dashboard_url: string }>(
+        API_ENDPOINTS.onboarding.complete,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ business_id: businessId }),
         }
       );
-      
-      if (!completeResponse.ok) {
-        throw new Error("Failed to complete onboarding");
-      }
-      
-      const completeData = await completeResponse.json();
       
       // Save data and redirect
       setVoiceAssistantData(formData);
@@ -147,10 +136,10 @@ export default function VoiceAssistantConfig() {
     <div className="space-y-8">
       <div>
         <h2 className="text-2xl font-bold text-stone-900">
-          {VoiceAssistantConfigData.title}
+          {config.title}
         </h2>
         <p className="text-stone-600 mt-1">
-          {VoiceAssistantConfigData.subtitle}
+          {config.subtitle}
         </p>
       </div>
 
@@ -185,7 +174,7 @@ export default function VoiceAssistantConfig() {
               onChange={(e) => handleChange("modelProvider", e.target.value)}
               className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
             >
-              {VoiceAssistantConfigData.modelProviders.map((provider) => (
+              {config.providers.map((provider) => (
                 <option key={provider.id} value={provider.id}>
                   {provider.name}
                 </option>
@@ -217,7 +206,7 @@ export default function VoiceAssistantConfig() {
             Voice (ElevenLabs)
           </label>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {VoiceAssistantConfigData.voices.slice(0, 8).map((voice) => (
+            {config.voices.slice(0, 8).map((voice) => (
               <VoicePreview
                 key={voice.id}
                 voice={voice}
@@ -226,21 +215,23 @@ export default function VoiceAssistantConfig() {
               />
             ))}
           </div>
-          <details className="mt-2">
-            <summary className="text-sm text-teal-600 cursor-pointer hover:text-teal-700">
-              Show more voices
-            </summary>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
-              {VoiceAssistantConfigData.voices.slice(8).map((voice) => (
-                <VoicePreview
-                  key={voice.id}
-                  voice={voice}
-                  isSelected={formData.voice === voice.id}
-                  onSelect={() => handleChange("voice", voice.id)}
-                />
-              ))}
-            </div>
-          </details>
+          {config.voices.length > 8 && (
+            <details className="mt-2">
+              <summary className="text-sm text-teal-600 cursor-pointer hover:text-teal-700">
+                Show more voices
+              </summary>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+                {config.voices.slice(8).map((voice) => (
+                  <VoicePreview
+                    key={voice.id}
+                    voice={voice}
+                    isSelected={formData.voice === voice.id}
+                    onSelect={() => handleChange("voice", voice.id)}
+                  />
+                ))}
+              </div>
+            </details>
+          )}
         </div>
 
         {/* First Message */}
@@ -306,7 +297,7 @@ export default function VoiceAssistantConfig() {
             Maximum Call Duration
           </label>
           <div className="flex flex-wrap gap-2">
-            {VoiceAssistantConfigData.durationPresets.map((preset) => (
+            {config.durationPresets.map((preset) => (
               <button
                 key={preset.value}
                 type="button"
@@ -374,4 +365,3 @@ export default function VoiceAssistantConfig() {
     </div>
   );
 }
-

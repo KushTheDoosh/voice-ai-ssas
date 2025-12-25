@@ -34,7 +34,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={outfit.variable}>
+    <html lang="en" className={outfit.variable} data-scroll-behavior="smooth">
       <body className={`${outfit.className} antialiased`}>
         {children}
       </body>

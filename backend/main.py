@@ -9,6 +9,7 @@ from .routes import (
     phone_numbers_router,
     voice_assistant_router,
     onboarding_router,
+    config_router,
 )
 
 # Create FastAPI application
@@ -35,6 +36,7 @@ app.include_router(knowledge_base_router, prefix=settings.api_v1_prefix)
 app.include_router(phone_numbers_router, prefix=settings.api_v1_prefix)
 app.include_router(voice_assistant_router, prefix=settings.api_v1_prefix)
 app.include_router(onboarding_router, prefix=settings.api_v1_prefix)
+app.include_router(config_router, prefix=settings.api_v1_prefix)
 
 
 @app.get("/")
